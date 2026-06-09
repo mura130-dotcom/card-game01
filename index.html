@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>脳トレ神経衰弱</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            text-align: center;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 5px;
+            user-select: none;
+        }
+        h1 {
+            font-size: 18px;
+            margin: 5px 0;
+            color: #333;
+        }
+        .screen { display: none; }
+        .screen.active { display: block; }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            background-color: #4caf50; /* 上級：緑 */
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px 2px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+        button:active { background-color: #388e3c; }
+        button.blue { background-color: #2196f3; } /* 初級：青 */
+        button.blue:active { background-color: #1565c0; }
+        button.orange { background-color: #ff9800; } /* 中級：オレンジ */
+        button.orange:active { background-color: #e65100; }
+
+        .status {
+            font-size: 16px;
+            margin: 5px 0;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            font-weight: bold;
+        }
+
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+            margin: 5px auto;
+            max-width: 280px;
+        }
+        .card {
+            background-color: #2196f3;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            font-weight: bold;
+            color: transparent;
+            aspect-ratio: 1 / 1;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            transition: transform 0.1s, background-color 0.1s;
+        }
+        .card.flipped {
+            background-color: #ffffff;
+            color: #222;
+            border: 2px solid #2196f3;
+        }
+        .card.matched { visibility: hidden; }
+        .card.empty {
+            background-color: #e0e0e0;
+            box-shadow: none;
+            pointer-events: none;
+        }
+
+        /* 履歴・グラフエリア */
+        .history-section {
+            margin-top: 15px;
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            max-width: 320px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        canvas {
+            background: #fafafa;
+            border: 1px solid #ddd;
+            margin-top: 5px;
+            width: 100%;
+            height: 140px;
+        }
+        .best-score {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 3px;
+        }
+
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+        .result-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            width: 85%;
+            max-width: 300px;
+        }
+        .result-rank {
+            font-size: 50px;
+            font-weight: bold;
+            color: #ff5722;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="screen-top" class="screen active">
+        <h1>脳トレ神経衰弱</h1>
+        <p style="font-size:14px; color:#666; margin: 5px 0;">挑戦するクラスを選んでください</p>
+        <div>
+            <button class="blue" onclick="selectClass('easy')">初級クラス (4×4)</button><br>
+            <button class="orange" onclick="selectClass('normal')">中級クラス (4×5)</button><br>
+            <button onclick="selectClass('hard')">上級クラス (4×6)</button>
+        </div>
+
+        <div class="history-section">
+            <div class="best-score" id="best-score-text">最高記録: まだ記録がありません</div>
+            <div style="font-size:11px; color:#777; text-align:left;">【直近のランク推移（月/日）】</div>
+            <canvas id="historyChart" width="300" height="140"></canvas>
+        </div>
+    </div>
+
+    <div id="screen-game" class="screen">
+        <h1 id="game-title">クラス</h1>
+        
+        <div id="game-controls" style="margin-bottom: 5px;">
+            <button class="blue" style="font-size:20px; padding:10px 30px;" onclick="pressStart()">▶ スタート</button>
+            <button class="orange" style="font-size:14px; padding:5px 15px;" onclick="goTop()">戻る</button>
+        </div>
+
+        <div class="status">
+            <div>時間: <span id="timer">0</span>秒</div>
+            <div>ミス回数: <span id="miss-count">0</span>回</div>
+        </div>
+
+        <div id="game-board"></div>
+    </div>
+
+    <div id="result-overlay" class="overlay">
+        <div class="result-box">
+            <h2>ゲームクリア！</h2>
+            <p style="margin:2px 0;">判定ランク</p>
+            <div id="result-rank" class="result-rank">-</div>
+            <p id="result-detail" style="font-size:16px; font-weight:bold; margin:5px 0;">タイム: 0秒<br>ミス: 0回</p>
+            
+            <button class="blue" onclick="retryGame()">🔄 もう一度挑戦</button><br>
+            <button class="orange" onclick="goTop()">トップへ戻る</button>
+        </div>
+    </div>
+
+    <script>
+        let timerInterval = null;
+        let timeElapsed = 0;
+        let missCount = 0;
+        let matchedPairs = 0;
+        let totalPairs = 0;
+        let flippedCards = [];
+        let isLockBoard = true;
+        let currentDifficulty = 'easy';
+        let gameStarted = false;
+
+        const difficultySettings = {
+            easy:   { name: '初級クラス', rows: 4, types: 6, color: '#2196f3' },
+            normal: { name: '中級クラス', rows: 5, types: 8, color: '#ff9800' },
+            hard:   { name: '上級クラス', rows: 6, types: 10, color: '#4caf50' }
+        };
+
+        const rankValues = { 'A': 4, 'B': 3, 'C': 2, 'D': 1 };
+        const ranks = ['A', 'B', 'C', 'D'];
+
+        // アプリ起動時のメイン処理
+        window.onload = () => {
+            setupSafetyData(); // 🌟 古い破損データを安全に掃除する装置
+            updateTopScreen();
+        };
+
+        // 🌟 古いデータ形式のバグを回避する初期化処理
+        function setupSafetyData() {
+            try {
+                // 過去の古いバージョンの保存データを完全に削除
+                localStorage.removeItem('brain_train_records');
+                localStorage.removeItem('brain_train_records_v2');
+                
+                // 現在のバージョンのデータチェック
+                const rawData = localStorage.getItem('brain_train_records_v4');
+                if (rawData) {
+                    const parsed = JSON.parse(rawData);
+                    // 万が一中身が配列でなかったり壊れていたらリセット
+                    if (!Array.isArray(parsed)) {
+                        localStorage.setItem('brain_train_records_v4', JSON.stringify([]));
+                    }
+                } else {
+                    localStorage.setItem('brain_train_records_v4', JSON.stringify([]));
+                }
+            } catch (e) {
+                console.error("Data setup error:", e);
+                localStorage.setItem('brain_train_records_v4', JSON.stringify([]));
+            }
+        }
+
+        function updateTopScreen() {
+            showScreen('screen-top');
+            cleanOldRecords();
+            
+            const records = getRecords();
+            const best = getBestScore();
+            
+            const bestText = document.getElementById('best-score-text');
+            if (best && difficultySettings[best.difficulty]) {
+                const className = difficultySettings[best.difficulty].name;
+                bestText.innerHTML = `🏆 個人最高記録<br><span style="color:#e65100;">${className} : ${best.time}秒 (${best.rank})</span>`;
+            } else {
+                bestText.innerText = "最高記録: まだ記録がありません";
+            }
+
+            drawChart(records);
+        }
+
+        function selectClass(difficulty) {
+            currentDifficulty = difficulty;
+            showScreen('screen-game');
+            document.getElementById('game-title').innerText = difficultySettings[difficulty].name;
+            prepareBoard(difficulty);
+        }
+
+        function prepareBoard(difficulty) {
+            const config = difficultySettings[difficulty];
+            const totalCells = 4 * config.rows;
+            totalPairs = config.types;
+
+            clearInterval(timerInterval);
+            timeElapsed = 0;
+            missCount = 0;
+            matchedPairs = 0;
+            flippedCards = [];
+            isLockBoard = true;
+            gameStarted = false;
+
+            document.getElementById('timer').innerText = timeElapsed;
+            document.getElementById('miss-count').innerText = missCount;
+            document.getElementById('game-controls').style.display = 'block';
+
+            let cardValues = [];
+            for (let i = 1; i <= config.types; i++) { cardValues.push(i, i); }
+            const emptyCount = totalCells - cardValues.length;
+            for (let i = 0; i < emptyCount; i++) { cardValues.push('E'); }
+
+            cardValues.sort(() => Math.random() - 0.5);
+
+            const board = document.getElementById('game-board');
+            board.innerHTML = '';
+
+            cardValues.forEach((val) => {
+                const card = document.createElement('div');
+                card.classList.add('card');
+                if (val === 'E') {
+                    card.classList.add('empty');
+                } else {
+                    card.dataset.value = val;
+                    card.innerText = val;
+                    card.addEventListener('click', flipCard);
+                }
+                board.appendChild(card);
+            });
+        }
+
+        function pressStart() {
+            if (gameStarted) return;
+            gameStarted = true;
+            isLockBoard = false;
+            document.getElementById('game-controls').style.display = 'none';
+
+            timerInterval = setInterval(() => {
+                timeElapsed++;
+                document.getElementById('timer').innerText = timeElapsed;
+            }, 1000);
+        }
+
+        function flipCard() {
+            if (isLockBoard) return;
+            if (this === flippedCards[0]) return;
+            if (this.classList.contains('matched') || this.classList.contains('flipped')) return;
+
+            this.classList.add('flipped');
+            flippedCards.push(this);
+
+            if (flippedCards.length === 2) {
+                checkMatch();
+            }
+        }
+
+        function checkMatch() {
+            isLockBoard = true;
+            let [card1, card2] = flippedCards;
+
+            if (card1.dataset.value === card2.dataset.value) {
+                setTimeout(() => {
+                    card1.classList.add('matched');
+                    card2.classList.add('matched');
+                    matchedPairs++;
+                    flippedCards = [];
+                    isLockBoard = false;
+
+                    if (matchedPairs === totalPairs) {
+                        endGame();
+                    }
+                }, 400);
+            } else {
+                setTimeout(() => {
+                    card1.classList.remove('flipped');
+                    card2.classList.remove('flipped');
+                    missCount++;
+                    document.getElementById('miss-count').innerText = missCount;
+                    flippedCards = [];
+                    isLockBoard = false;
+                }, 800);
+            }
+        }
+
+        function endGame() {
+            clearInterval(timerInterval);
+            const rank = calculateRank(timeElapsed, currentDifficulty);
+
+            saveRecord(currentDifficulty, timeElapsed, rank);
+
+            document.getElementById('result-rank').innerText = rank;
+            document.getElementById('result-detail').innerText = `タイム: ${timeElapsed}秒\nミス回数: ${missCount}回`;
+            document.getElementById('result-overlay').style.display = 'flex';
+        }
+
+        function calculateRank(time, difficulty) {
+            if (difficulty === 'easy') {
+                if (time <= 15) return 'A';
+                if (time <= 20) return 'B';
+                if (time <= 25) return 'C';
+                return 'D';
+            } else if (difficulty === 'normal') {
+                if (time <= 20) return 'A';
+                if (time <= 25) return 'B';
+                if (time <= 30) return 'C';
+                return 'D';
+            } else if (difficulty === 'hard') {
+                if (time <= 30) return 'A';
+                if (time <= 40) return 'B';
+                if (time <= 50) return 'C';
+                return 'D';
+            }
+            return 'D';
+        }
+
+        function retryGame() {
+            document.getElementById('result-overlay').style.display = 'none';
+            prepareBoard(currentDifficulty);
+        }
+
+        function goTop() {
+            document.getElementById('result-overlay').style.display = 'none';
+            updateTopScreen();
+        }
+
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        // 💾 新しいデータ保存キー（v4）で管理
+        function getRecords() {
+            try {
+                return JSON.parse(localStorage.getItem('brain_train_records_v4')) || [];
+            } catch(e) {
+                return [];
+            }
+        }
+
+        function saveRecord(diff, time, rank) {
+            const records = getRecords();
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`;
+            
+            const existingIndex = records.findIndex(r => r.dateStr === dateStr && r.difficulty === diff);
+
+            const newRecord = {
+                date: now.getTime(),
+                dateStr: dateStr,
+                displayDate: `${now.getMonth() + 1}/${now.getDate()}`,
+                difficulty: diff,
+                time: time,
+                rank: rank
+            };
+
+            if (existingIndex > -1) {
+                const oldRec = records[existingIndex];
+                const oldVal = rankValues[oldRec.rank] || 0;
+                const newVal = rankValues[rank] || 0;
+
+                if (newVal > oldVal || (newVal === oldVal && time < oldRec.time)) {
+                    records[existingIndex] = newRecord;
+                }
+            } else {
+                records.push(newRecord);
+            }
+
+            localStorage.setItem('brain_train_records_v4', JSON.stringify(records));
+        }
+
+        function cleanOldRecords() {
+            const records = getRecords();
+            if (records.length === 0) return;
+            const oneMonthAgo = new Date().getTime() - (30 * 24 * 60 * 60 * 1000);
+            const filtered = records.filter(r => r.date >= oneMonthAgo);
+            localStorage.setItem('brain_train_records_v4', JSON.stringify(filtered));
+        }
+
+        function getBestScore() {
+            const records = getRecords();
+            if (!records || records.length === 0) return null;
+            return records.reduce((best, cur) => {
+                const bestVal = rankValues[best.rank] || 0;
+                const curVal = rankValues[cur.rank] || 0;
+                if (curVal > bestVal) return cur;
+                if (curVal === bestVal && cur.time < best.time) return cur;
+                return best;
+            }, records[0]);
+        }
+
+        function drawChart(records) {
+            const canvas = document.getElementById('historyChart');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (!records || records.length === 0) {
+                ctx.fillStyle = "#999";
+                ctx.font = "12px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("ゲームをクリアするとグラフが表示されます", canvas.width / 2, 75);
+                return;
+            }
+
+            const uniqueDates = Array.from(new Set(records.map(r => r.displayDate)))
+                                     .sort((a,b) => {
+                                         const recA = records.find(r => r.displayDate === a);
+                                         const recB = records.find(r => r.displayDate === b);
+                                         return (recA ? recA.date : 0) - (recB ? recB.date : 0);
+                                     })
+                                     .slice(-7);
+
+            const paddingLeft = 35;
+            const paddingRight = 25;
+            const paddingTop = 20;
+            const paddingBottom = 25;
+            
+            const chartWidth = canvas.width - paddingLeft - paddingRight;
+            const chartHeight = canvas.height - paddingTop - paddingBottom;
+
+            ctx.fillStyle = "#666";
+            ctx.font = "11px sans-serif";
+            ctx.textAlign = "right";
+            
+            const yPositions = {};
+            ranks.forEach((r, i) => {
+                const y = paddingTop + (i / (ranks.length - 1)) * chartHeight;
+                yPositions[r] = y;
+                
+                ctx.strokeStyle = "#eee";
+                ctx.beginPath();
+                ctx.moveTo(paddingLeft, y);
+                ctx.lineTo(canvas.width - paddingRight, y);
+                ctx.stroke();
+                
+                ctx.fillText(r, paddingLeft - 8, y + 4);
+            });
+
+            function getX(displayDate) {
+                if (uniqueDates.length === 1) return paddingLeft + chartWidth / 2;
+                const idx = uniqueDates.indexOf(displayDate);
+                if (idx === -1) return null;
+                return paddingLeft + (idx / (uniqueDates.length - 1)) * chartWidth;
+            }
+
+            uniqueDates.forEach(dDate => {
+                const x = getX(dDate);
+                ctx.fillStyle = "#555";
+                ctx.font = "10px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText(dDate, x, canvas.height - 8);
+            });
+
+            const diffs = ['easy', 'normal', 'hard'];
+            diffs.forEach(diff => {
+                const diffRecords = records.filter(r => r.difficulty === diff && uniqueDates.includes(r.displayDate))
+                                           .sort((a,b) => a.date - b.date);
+                if (diffRecords.length < 2) return;
+
+                ctx.beginPath();
+                ctx.strokeStyle = difficultySettings[diff].color;
+                ctx.lineWidth = 2.5;
+
+                diffRecords.forEach((rec, index) => {
+                    const x = getX(rec.displayDate);
+                    const y = yPositions[rec.rank];
+                    if (index === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            });
+
+            records.forEach(rec => {
+                const x = getX(rec.displayDate);
+                if (x === null) return;
+
+                const y = yPositions[rec.rank];
+                if (!y) return;
+                const color = difficultySettings[rec.difficulty] ? difficultySettings[rec.difficulty].color : '#2196f3';
+
+                ctx.beginPath();
+                ctx.fillStyle = color;
+                ctx.arc(x, y, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = "#333";
+                ctx.font = "9px sans-serif";
+                ctx.textAlign = "center";
+                
+                let offset = -8;
+                if (rec.difficulty === 'normal') offset = -18;
+                if (rec.difficulty === 'hard') offset = 4;
+                
+                ctx.fillText(rec.time + "秒", x, y + offset);
+            });
+        }
+    </script>
+</body>
+</html>
